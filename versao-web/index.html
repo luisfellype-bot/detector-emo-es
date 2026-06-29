@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gremory Matrix - Web AI</title>
+    <title>Gremory Matrix - Web AI Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
@@ -16,8 +16,9 @@
         canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 2; }
         .sidebar { background: rgba(20, 20, 25, 0.9); border: 1px solid #333; border-radius: 8px; padding: 25px; display: flex; flex-direction: column; justify-content: space-between; }
         .brand h1 { font-size: 20px; margin: 0; color: var(--primary); text-shadow: 0 0 10px rgba(255,42,42,0.6); }
-        .output { background: rgba(0,0,0,0.5); border-left: 4px solid var(--primary); padding: 20px; margin: 30px 0; }
-        .value { font-size: 32px; font-weight: bold; margin-top: 5px; }
+        .output { background: rgba(0,0,0,0.5); border-left: 4px solid var(--primary); padding: 20px; margin: 20px 0; }
+        .value { font-size: 24px; font-weight: bold; margin-top: 5px; word-wrap: break-word; }
+        .tech-data { font-size: 11px; color: #00ff00; font-family: monospace; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -29,11 +30,12 @@
         <div class="sidebar">
             <div class="brand">
                 <h1>GREMORY WEB-MATRIX</h1>
-                <span style="font-size: 9px; color:#666;">RASTREAMENTO ATIVO via WEB</span>
+                <span style="font-size: 9px; color:#666;">RASTREAMENTO MULTI-ALVO ATIVO</span>
             </div>
             <div class="output">
-                <div style="font-size: 11px; color: #666; text-transform: uppercase;">Expressão Alvo</div>
+                <div style="font-size: 11px; color: #666; text-transform: uppercase;">Expressão Identificada</div>
                 <div class="value" id="emotion-result">AGUARDANDO...</div>
+                <div class="tech-data" id="tech-score">Smile Score: 0.00</div>
             </div>
             <div style="font-size: 10px; color: #444; text-align: center;">COMPATÍVEL COM RENDER RENDERING ENGINE</div>
         </div>
@@ -42,28 +44,92 @@
         const videoElement = document.getElementById('webcam');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
+
+        // Função auxiliar para calcular a distância 3D entre pontos no JavaScript
+        function calcularDistancia(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) + Math.pow(p1.z - p2.z, 2));
+        }
+
         function onResults(results) {
-            canvasElement.width = canvasElement.clientWidth; canvasElement.height = canvasElement.clientHeight;
-            canvasCtx.save(); canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasElement.width = canvasElement.clientWidth; 
+            canvasElement.height = canvasElement.clientHeight;
+            canvasCtx.save(); 
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 for (const landmarks of results.multiFaceLandmarks) {
-                    canvasCtx.shadowColor = '#ff2a2a'; canvasCtx.shadowBlur = 10;
+                    canvasCtx.shadowColor = '#ff2a2a'; 
+                    canvasCtx.shadowBlur = 10;
+                    
+                    // Desenha o contorno oval do rosto em Vermelho Matrix
                     drawConnectors(canvasCtx, landmarks, FACEMESH_FACE_OVAL, {color: '#ff2a2a', lineWidth: 2});
                     drawConnectors(canvasCtx, landmarks, FACEMESH_LIPS, {color: '#ffffff', lineWidth: 1.5});
-                    const smile = (landmarks[61].y + landmarks[291].y) / 2 - landmarks[13].y;
-                    let emo = "NEUTRO 😐"; let cor = "#fff";
-                    if (smile * 100 < 1.9) { emo = "FELIZ 😄"; cor = "#4caf50"; }
-                    else if (smile * 100 > 3.7) { emo = "TRISTE 😢"; cor = "#2196f3"; }
+                    
+                    // --- MAPEAMENTO DOS DIRECIONAIS DE IA ---
+                    const labioSuperior = landmarks[13];
+                    const labioInferior = landmarks[14];
+                    const cantoBocaEsq = landmarks[61];
+                    const cantoBocaDir = landmarks[291];
+                    const sobrancelhaEsqInterna = landmarks[55];
+                    const sobrancelhaDirInterna = landmarks[285];
+                    const olhoSup = landmarks[159];
+                    const olhoInf = landmarks[145];
+
+                    // --- CÁLCULO DAS MÉTRICAS ---
+                    const aberturaBoca = calcularDistancia(labioSuperior, labioInferior);
+                    const distanciaSobrancelhas = calcularDistancia(sobrancelhaEsqInterna, sobrancelhaDirInterna);
+                    const aberturaOlho = calcularDistancia(olhoSup, olhoInf);
+                    
+                    const alturaCantosBoca = (cantoBocaEsq.y + cantoBocaDir.y) / 2;
+                    let smileScore = (alturaCantosBoca - labioSuperior.y) * 100;
+
+                    // --- MÁQUINA DE ESTADOS DE EMOÇÃO ---
+                    let emo = "NEUTRO 😐"; 
+                    let cor = "#ffffff";
+
+                    // 1. Detecção de Olhos Fechados / Piscando
+                    if (aberturaOlho < 0.015) {
+                        emo = "PISCANDO / DORMINDO 😴";
+                        cor = "#ffff00"; // Amarelo
+                    }
+                    // 2. Detecção de Surpresa
+                    else if (aberturaOlho > 0.032 && aberturaBoca > 0.04) {
+                        emo = "SURPRESO 😲";
+                        cor = "#00ffff"; // Ciano
+                    }
+                    // 3. Detecção de Felicidade
+                    else if (smileScore < 1.9) {
+                        emo = "FELIZ 😄"; 
+                        cor = "#4caf50"; // Verde
+                    }
+                    // 4. Detecção de Raiva / Bravo
+                    else if (distanciaSobrancelhas < 0.042) {
+                        emo = "BRAVO 😡";
+                        cor = "#ff2a2a"; // Vermelho
+                    }
+                    // 5. Detecção de Tristeza
+                    else if (smileScore > 3.7) { 
+                        emo = "TRISTE 😢"; 
+                        cor = "#2196f3"; // Azul
+                    }
+
+                    // Atualiza os dados na barra lateral em tempo real
                     document.getElementById('emotion-result').innerText = emo;
                     document.getElementById('emotion-result').style.color = cor;
+                    document.getElementById('tech-score').innerText = `Smile Score: ${smileScore.toFixed(2)}`;
                 }
-            } else { document.getElementById('emotion-result').innerText = "PROCURANDO..."; document.getElementById('emotion-result').style.color = "#fff"; }
+            } else { 
+                document.getElementById('emotion-result').innerText = "PROCURANDO..."; 
+                document.getElementById('emotion-result').style.color = "#fff"; 
+            }
             canvasCtx.restore();
         }
+
         const faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
         faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         faceMesh.onResults(onResults);
+
         const camera = new Camera(videoElement, { onFrame: async () => { await faceMesh.send({ image: videoElement }); }, width: 1280, height: 720 });
         camera.start();
     </script>
